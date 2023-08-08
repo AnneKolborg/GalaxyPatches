@@ -3,6 +3,25 @@
 !#########################################################################
 !#########################################################################
 subroutine dump_all
+   !> @brief The subroutine `dump_all` performs various output and backup operations.
+   !>
+   !> This subroutine writes out a variety of physical quantities and system information, 
+   !> including hydrodynamics, particle, radiation, and Poisson solver data, and performs
+   !> checkpointing to save the state of the simulation at the current time step. 
+   !> It creates necessary directories for output files, outputs various parameters and 
+   !> timing information, and checks if certain conditions are met for output operations. 
+   !> It works in parallel computation context as it contains conditions for MPI routines.
+   !>
+   !> @note This subroutine should be called when there is a need to write out or back up the current state of the simulation.
+   !> @note The specific files written out and their formats depend on the configuration of the simulation and the current system state.
+   !> @note The directory for output files and their names are constructed within this subroutine.
+   !> 
+   !> @dependencies This subroutine uses modules `amr_commons`, `pm_commons`, `hydro_commons`, and `cooling_module`.
+   !> @dependencies It interfaces with MPI when the simulation is run in parallel.
+   !>
+   !> @param No parameters are passed directly to this subroutine. It uses global variables defined in the used modules.
+   !>
+   !> @returns No return value. The results are written out to various files.
   use amr_commons
   use pm_commons
   use hydro_commons
@@ -34,9 +53,9 @@ subroutine dump_all
   if(ndim>1)then
 
      if(IOGROUPSIZEREP>0) then
-        filedir='output_'//TRIM(nchar)//'/group_'//TRIM(ncharcpu)//'/'
+        filedir='checkpoint_'//TRIM(nchar)//'/checkpoint_'//TRIM(ncharcpu)//'/'
      else
-        filedir='output_'//TRIM(nchar)//'/'
+        filedir='checkpoint_'//TRIM(nchar)//'/'
      endif
 
      call create_output_dirs(filedir)
@@ -190,6 +209,129 @@ end subroutine dump_all
 !#########################################################################
 !#########################################################################
 !#########################################################################
+subroutine dump_plotfile
+   use amr_commons
+   use pm_commons
+   use hydro_commons
+   use cooling_module
+   implicit none
+ #ifndef WITHOUTMPI
+   include 'mpif.h'
+ #endif
+ #if ! defined (WITHOUTMPI) || defined (NOSYSTEM)
+   integer::info
+ #endif
+   character::nml_char
+   character(LEN=5)::nchar,ncharcpu
+   character(LEN=80)::filename,filename_desc,filedir
+   integer::ierr
+ 
+   if(nstep_coarse==nstep_coarse_old.and.nstep_coarse>0)return
+   if(nstep_coarse==0.and.nrestart>0)return
+   if(verbose)write(*,*)'Entering dump_plot_file'
+ 
+   call write_screen
+   call title(ifout,nchar)
+   ifout=ifout+1
+   if(t>=tout(iout).or.aexp>=aout(iout))iout=iout+1
+   output_done=.true.
+ 
+   if(IOGROUPSIZEREP>0)call title(((myid-1)/IOGROUPSIZEREP)+1,ncharcpu)
+ 
+   if(ndim>1)then
+ 
+      if(IOGROUPSIZEREP>0) then
+         filedir='plotfile_'//TRIM(nchar)//'/group_'//TRIM(ncharcpu)//'/'
+      else
+         filedir='plotfile_'//TRIM(nchar)//'/'
+      endif
+ 
+      call create_output_dirs(filedir)
+    
+      if(myid==1.and.print_when_io) write(*,*)'Start backup header'
+      ! Output header: must be called by each process !
+      filename=TRIM(filedir)//'header_'//TRIM(nchar)//'.txt'
+      call output_header(filename)
+ #ifndef WITHOUTMPI
+      if(synchro_when_io) call MPI_BARRIER(MPI_COMM_WORLD,info)
+ #endif
+      if(myid==1.and.print_when_io) write(*,*)'End backup header'
+ 
+      if(myid==1.and.print_when_io) write(*,*)'Start backup info etc.'
+      ! Only master process
+      if(myid==1)then
+         filename=TRIM(filedir)//'info_'//TRIM(nchar)//'.txt'
+         call output_info(filename)
+         filename=TRIM(filedir)//'makefile.txt'
+         call output_makefile(filename)
+         filename=TRIM(filedir)//'patches.txt'
+         call output_patch(filename)
+         if(cooling .and. .not. neq_chem)then
+            filename=TRIM(filedir)//'cooling_'//TRIM(nchar)//'.out'
+            call output_cool(filename)
+         end if
+         ! Copy namelist file to output directory
+         filename=TRIM(filedir)//'namelist.txt'
+         OPEN(10, FILE=namelist_file, ACCESS="STREAM", ACTION="READ")
+         OPEN(11, FILE=filename,      ACCESS="STREAM", ACTION="WRITE")
+         DO
+            READ(10, IOSTAT=IERR)nml_char
+            IF (IERR.NE.0) EXIT
+            WRITE(11)nml_char
+         END DO
+         CLOSE(11)
+         CLOSE(10)
+         ! Copy compilation details to output directory
+         filename=TRIM(filedir)//'compilation.txt'
+         OPEN(UNIT=11, FILE=filename, FORM='formatted')
+         write(11,'(" compile date = ",A)')TRIM(builddate)
+         write(11,'(" patch dir    = ",A)')TRIM(patchdir)
+         write(11,'(" remote repo  = ",A)')TRIM(gitrepo)
+         write(11,'(" local branch = ",A)')TRIM(gitbranch)
+         write(11,'(" last commit  = ",A)')TRIM(githash)
+         CLOSE(11)
+      endif
+ #ifndef WITHOUTMPI
+      if(synchro_when_io) call MPI_BARRIER(MPI_COMM_WORLD,info)
+ #endif
+      if(myid==1.and.print_when_io) write(*,*)'End backup info etc.'
+ 
+      if(myid==1.and.print_when_io) write(*,*)'Start backup amr'
+      filename=TRIM(filedir)//'amr_'//TRIM(nchar)//'.out'
+      call backup_amr(filename)
+ #ifndef WITHOUTMPI
+      if(synchro_when_io) call MPI_BARRIER(MPI_COMM_WORLD,info)
+ #endif
+      if(myid==1.and.print_when_io) write(*,*)'End backup amr'
+ 
+      if(hydro)then
+         if(myid==1.and.print_when_io) write(*,*)'Start backup hydro'
+         filename=TRIM(filedir)//'hydro_'//TRIM(nchar)//'.out'
+         filename_desc = trim(filedir)//'hydro_file_descriptor.txt'
+         call backup_hydro(filename, filename_desc)
+ #ifndef WITHOUTMPI
+         if(synchro_when_io) call MPI_BARRIER(MPI_COMM_WORLD,info)
+ #endif
+         if(myid==1.and.print_when_io) write(*,*)'End backup hydro'
+      end if
+ 
+      if(myid==1.and.print_when_io) write(*,*)'Start timer'
+      ! Output timer: must be called by each process !
+      filename=TRIM(filedir)//'timer_'//TRIM(nchar)//'.txt'
+      call output_timer(.true., filename)
+ #ifndef WITHOUTMPI
+      if(synchro_when_io) call MPI_BARRIER(MPI_COMM_WORLD,info)
+ #endif
+      if(myid==1.and.print_when_io) write(*,*)'End output timer'
+ 
+   end if
+ 
+ end subroutine dump_plotfile
+!#########################################################################
+!#########################################################################
+!#########################################################################
+!#########################################################################
+ 
 subroutine backup_amr(filename)
   use amr_commons
   use hydro_commons
