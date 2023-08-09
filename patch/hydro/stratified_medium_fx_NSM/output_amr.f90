@@ -3,25 +3,40 @@
 !#########################################################################
 !#########################################################################
 subroutine dump_all
-   !> @brief The subroutine `dump_all` performs various output and backup operations.
-   !>
-   !> This subroutine writes out a variety of physical quantities and system information, 
-   !> including hydrodynamics, particle, radiation, and Poisson solver data, and performs
-   !> checkpointing to save the state of the simulation at the current time step. 
-   !> It creates necessary directories for output files, outputs various parameters and 
-   !> timing information, and checks if certain conditions are met for output operations. 
-   !> It works in parallel computation context as it contains conditions for MPI routines.
-   !>
-   !> @note This subroutine should be called when there is a need to write out or back up the current state of the simulation.
-   !> @note The specific files written out and their formats depend on the configuration of the simulation and the current system state.
-   !> @note The directory for output files and their names are constructed within this subroutine.
-   !> 
-   !> @dependencies This subroutine uses modules `amr_commons`, `pm_commons`, `hydro_commons`, and `cooling_module`.
-   !> @dependencies It interfaces with MPI when the simulation is run in parallel.
-   !>
-   !> @param No parameters are passed directly to this subroutine. It uses global variables defined in the used modules.
-   !>
-   !> @returns No return value. The results are written out to various files.
+   !-----------------------------------------------------------------------------------
+   ! SUBROUTINE: dump_all
+   !
+   ! DESCRIPTION:
+   !   This subroutine handles the creation and storage of various output files related
+   !   to the state of the system being simulated. It creates directories and files based 
+   !   on various conditions and writes data into them. Outputs include headers, amr, 
+   !   hydro, rt, parts, poisson, radiation, gadget format, and timers.
+   !
+   ! MODULE DEPENDENCIES:
+   !   - amr_commons     : Common AMR (Adaptive Mesh Refinement) variables and methods.
+   !   - pm_commons      : Common PM (Particle Mesh) variables and methods.
+   !   - hydro_commons   : Common hydrodynamic variables and methods.
+   !   - cooling_module  : Cooling-related variables and methods.
+   !
+   ! GLOBALS MODIFIED:
+   !   - None directly by this subroutine; dependent subroutines called may modify globals.
+   !
+   ! INPUT/OUTPUT ARGUMENTS:
+   !   - No explicit arguments; uses module variables and parameters.
+   !
+   ! NOTES:
+   !   1. If the subroutine is compiled with MPI support (WITHOUTMPI not defined), MPI
+   !      functionalities are invoked to ensure synchronization across processes.
+   !   2. Data is written to directories structured with 'checkpoint_' naming conventions
+   !      and various descriptive subdirectories.
+   !   3. The subroutine checks the status of certain flags (e.g., hydro) to determine which
+   !      modules' data needs to be written to the output.
+   !   4. Verbose outputs can be triggered to notify the user about the progress of file 
+   !      backups.
+   !
+   ! EXAMPLES OF USAGE:
+   !   call dump_all
+   !-----------------------------------------------------------------------------------
   use amr_commons
   use pm_commons
   use hydro_commons
@@ -210,6 +225,41 @@ end subroutine dump_all
 !#########################################################################
 !#########################################################################
 subroutine dump_plotfile
+   !-----------------------------------------------------------------------------------
+   ! SUBROUTINE: dump_plotfile
+   !
+   ! DESCRIPTION:
+   !   This subroutine is responsible for dumping necessary data to plot files. The routine
+   !   addresses various conditions for dumping, including MPI parallelization, the current
+   !   step in coarse-grained simulations, output directory structures, and specific output
+   !   components like headers, info, patches, cooling data, and timers. Depending on the 
+   !   configurations and condition checks, the subroutine writes to the relevant files. 
+   !
+   ! MODULE DEPENDENCIES:
+   !   - amr_commons     : Common functionalities for Adaptive Mesh Refinement (AMR).
+   !   - pm_commons      : Common functionalities related to the particle-mesh algorithm.
+   !   - hydro_commons   : Common functionalities related to hydrodynamics.
+   !   - cooling_module  : Module containing routines for cooling.
+   !
+   ! GLOBALS MODIFIED:
+   !   - None directly by this subroutine; dependent subroutines called may modify globals.
+   !
+   ! INPUT/OUTPUT ARGUMENTS:
+   !   - No explicit arguments; uses module variables and parameters.
+   !
+   ! NOTES:
+   !   1. If the subroutine is compiled with MPI support (WITHOUTMPI not defined), MPI
+   !      functionalities are invoked to ensure synchronization across processes.
+   !   2. Depending on conditions, data is written to directories structured with 
+   !      'plotfile_' naming conventions and various descriptive subdirectories.
+   !   3. The subroutine checks the status of certain flags (e.g., hydro) to determine which
+   !      modules' data needs to be written to the output.
+   !   4. Verbose outputs can be triggered to notify the user about the progress of file 
+   !      backups.
+   !
+   ! EXAMPLES OF USAGE:
+   !   call dump_plotfile
+   !-----------------------------------------------------------------------------------
    use amr_commons
    use pm_commons
    use hydro_commons
@@ -333,6 +383,43 @@ subroutine dump_plotfile
 !#########################################################################
  
 subroutine backup_amr(filename)
+   !-----------------------------------------------------------------------------------
+   ! SUBROUTINE: backup_amr
+   !
+   ! DESCRIPTION:
+   !   This subroutine manages the backup process of the Adaptive Mesh Refinement (AMR)
+   !   data. It converts units, calculates local constants, and writes various AMR grid
+   !   data to a file, including time variables, level variables, boundaries, coarse level,
+   !   and fine levels. MPI synchronization mechanisms are employed for parallel 
+   !   execution (when compiled with MPI support).
+   !
+   ! MODULE DEPENDENCIES:
+   !   - amr_commons    : Common AMR (Adaptive Mesh Refinement) variables and methods.
+   !   - pm_commons     : Common PM (Particle Mesh) variables and methods.
+   !   - hydro_commons  : Common hydrodynamic variables and methods.
+   !
+   ! GLOBALS MODIFIED:
+   !   - Various AMR-related global variables can be modified by this subroutine.
+   !
+   ! INPUT/OUTPUT ARGUMENTS:
+   !   - filename (character, input)  : The name of the file to which the AMR data
+   !                                   will be backed up.
+   !
+   ! NOTES:
+   !   1. If the subroutine is compiled with MPI support (WITHOUTMPI not defined), MPI
+   !      functionalities are invoked to ensure synchronization across processes.
+   !   2. The output file structure includes units conversion, local constants, and 
+   !      various AMR grid data.
+   !   3. The subroutine uses an efficient token-passing mechanism for IO in parallel 
+   !      MPI environments to prevent simultaneous IO operations.
+   !   4. Depending on configurations, the subroutine may interact with boundary 
+   !      conditions and the overall domain decomposition strategy.
+   !   5. Verbose outputs can be triggered to notify the user about entering the backup
+   !      phase.
+   !
+   ! EXAMPLES OF USAGE:
+   !   call backup_amr('my_amr_data.dat')
+   !-----------------------------------------------------------------------------------
   use amr_commons
   use hydro_commons
   use pm_commons
@@ -533,6 +620,44 @@ end subroutine backup_amr
 !#########################################################################
 !#########################################################################
 subroutine output_info(filename)
+   !==============================================================================
+   ! Subroutine output_info
+   !
+   ! Description:
+   !   This subroutine is designed to write essential information about the simulation
+   !   setup to a file, such as the run parameters, physical parameters, and
+   !   the domain decomposition ordering.
+   !
+   ! Parameters:
+   !   - filename: The name of the file to which the information will be written.
+   !
+   ! Modules Used:
+   !   - amr_commons: Common data structures and constants related to adaptive mesh refinement.
+   !   - hydro_commons: Common data structures and constants for hydrodynamics calculations.
+   !   - pm_commons: Common data structures and constants for particle mesh calculations.
+   !   - mpif.h: MPI (Message Passing Interface) library header. Used for parallel computing.
+   !
+   ! Local Variables:
+   !   - nx_loc, ny_loc, nz_loc: Local constants determining the resolution along each axis.
+   !   - ilun: Unit number associated with the file operation.
+   !   - icpu, idom: Iterative counters.
+   !   - ierr: Error status from file operations.
+   !   - scale, scale_nH, scale_T2, scale_l, scale_d, scale_t, scale_v: Scaling factors.
+   !   - fileloc: File location obtained by trimming filename.
+   !
+   ! Notes:
+   !   - The subroutine starts by calculating conversion factors from user units to cgs units.
+   !   - It then writes a number of parameters and physical constants to the file for further reference.
+   !   - If there's an error during file operations, the subroutine can abort the whole program.
+   !   - MPI is conditionally used, if it is enabled (controlled by the WITHOUTMPI flag).
+   !
+   ! Example usage:
+   !   call output_info('simulation_info.dat')
+   !
+   !==============================================================================
+   subroutine output_info(filename)
+      ...
+      end subroutine output_info
   use amr_commons
   use hydro_commons
   use pm_commons
@@ -620,6 +745,44 @@ end subroutine output_info
 !#########################################################################
 !#########################################################################
 subroutine output_header(filename)
+   !==============================================================================
+   ! Subroutine output_header
+   !
+   ! Description:
+   !   This subroutine writes a header to the given file containing information 
+   !   about the particle families and other particle-related properties in the 
+   !   simulation. The header includes a count of particles for each family type, 
+   !   as well as a listing of particle fields that are present.
+   !
+   ! Parameters:
+   !   - filename: The name of the file to which the header will be written.
+   !
+   ! Modules Used:
+   !   - amr_commons: Common data structures and constants related to adaptive mesh refinement.
+   !   - hydro_commons: Common data structures and constants for hydrodynamics calculations.
+   !   - pm_commons: Common data structures and constants for particle mesh calculations.
+   !   - mpif.h: MPI (Message Passing Interface) library header. Used for parallel computing.
+   !
+   ! Local Variables:
+   !   - ilun: Unit number associated with the file operation.
+   !   - fileloc: File location obtained by trimming filename.
+   !   - npart_family_loc: Local count of particles in each family.
+   !   - npart_family: Global count of particles in each family (across all processes).
+   !   - npart_all_loc: Local count of all particles.
+   !   - npart_all: Global count of all particles (across all processes).
+   !   - ifam, ipart: Iterative counters.
+   !
+   ! Notes:
+   !   - The subroutine calculates both local (to the current process) and global (across all processes)
+   !     particle counts for each family type.
+   !   - MPI is conditionally used to aggregate particle counts across processes, if it is enabled 
+   !     (controlled by the WITHOUTMPI flag).
+   !   - Only process with ID "1" writes to the output file, ensuring a single header is written.
+   !
+   ! Example usage:
+   !   call output_header('particles_header.dat')
+   !
+   !==============================================================================
   use amr_commons
   use hydro_commons
   use pm_commons
@@ -707,6 +870,50 @@ end subroutine output_header
 !#########################################################################
 !#########################################################################
 subroutine savegadget(filename)
+   !==============================================================================
+   ! Subroutine savegadget
+   !
+   ! Description:
+   !   This subroutine saves particle data in the Gadget file format. The Gadget 
+   !   file format is commonly used in cosmological simulations. This subroutine 
+   !   prepares the header, as well as the positions, velocities, and IDs of the 
+   !   particles, and then invokes the gadgetwritefile subroutine to write 
+   !   these to the specified file.
+   !
+   ! Parameters:
+   !   - filename: The name of the file to which the particle data should be written.
+   !
+   ! Modules Used:
+   !   - amr_commons: Common data structures and constants related to adaptive mesh refinement.
+   !   - hydro_commons: Common data structures and constants for hydrodynamics.
+   !   - pm_commons: Common data structures and constants related to particle mesh operations.
+   !   - gadgetreadfilemod: Module to handle reading and writing in Gadget file format.
+   !   - mpif.h: MPI (Message Passing Interface) library header. Used for parallel computing.
+   !
+   ! Local Variables:
+   !   - header: Gadget file header containing metadata for the particles.
+   !   - pos: Array containing particle positions.
+   !   - vel: Array containing particle velocities.
+   !   - ids: Array containing particle IDs.
+   !   - gadgetvfact: Factor used in calculating the particle velocities.
+   !   - npart_tot: Total number of particles across all processes.
+   !   - RHOcrit: Critical density of the universe.
+   !   ... (other intermediate and utility variables)
+   !
+   ! Notes:
+   !   - Particles in this routine are described using their positions (xp), 
+   !     velocities (vp), and IDs (idp). The npart and npartmax variables seem 
+   !     to represent the current number and the maximum number of particles, respectively.
+   !   - Depending on the LONGINT flag, 64-bit integers might be used for some operations.
+   !   - The subroutine handles parallel operations using MPI, but can also work 
+   !     in a serial mode when the WITHOUTMPI flag is defined.
+   !   - The "RHOcrit" parameter is the critical density of the universe and is used 
+   !     to compute the mass of the particles for the Gadget file.
+   !
+   ! Example usage:
+   !   call savegadget('/path/to/output/file')
+   !
+   !==============================================================================
   use amr_commons
   use hydro_commons
   use pm_commons
@@ -798,7 +1005,41 @@ end subroutine savegadget
 !#########################################################################
 !#########################################################################
 subroutine create_output_dirs(filedir)
-
+   !==============================================================================
+   ! Subroutine create_output_dirs
+   !
+   ! Description:
+   !   This subroutine creates the specified output directory and, if necessary,
+   !   its parent directories. The directory creation can be achieved either 
+   !   using a system command or platform-specific Fortran calls depending on 
+   !   the build flags (e.g., NOSYSTEM, WITHOUTMPI).
+   !
+   ! Parameters:
+   !   - filedir: The directory path that needs to be created.
+   !
+   ! Modules Used:
+   !   - amr_commons: Common data structures and constants related to adaptive mesh refinement.
+   !   - mpif.h: MPI (Message Passing Interface) library header. Used for parallel computing.
+   !
+   ! Local Variables:
+   !   - ierr: Error code returned from system operations.
+   !   - filecmd: System command to create the directory.
+   !   - filedirini: Initial directory segment for NOSYSTEM use.
+   !   - info: Error information for MPI calls.
+   !
+   ! Notes:
+   !   - If the NOSYSTEM flag is defined at compile time, the subroutine uses platform-specific
+   !     Fortran calls (e.g., PXFMKDIR) to make directories.
+   !   - If the WITHOUTMPI flag isn't defined, MPI calls are used to synchronize operations 
+   !     across different processes.
+   !   - The "withoutmkdir" flag controls whether the directory creation should be skipped.
+   !   - If the system command to create directories fails, an error message is displayed 
+   !     and the program can be terminated (conditionally based on the WITHOUTMPI flag).
+   !
+   ! Example usage:
+   !   call create_output_dirs('/path/to/output/dir/')
+   !
+   !==============================================================================
   use amr_commons
   implicit none
   character(LEN=80), intent(in):: filedir
