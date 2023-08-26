@@ -94,7 +94,8 @@ module amr_parameters
   
   ! Output parameters
   integer::iout=1             ! Increment for output times
-  integer::ifout=1            ! Increment for output files
+  integer::ifout_checkpoint=1 ! Increment for checkpoint files
+  integer::ifout_plotfile=1   ! Increment for plot files
   integer::iback=1            ! Increment for backup files
   integer::noutput=1          ! Total number of outputs
   integer::foutput_checkpoint=1000000 ! Frequency of outputs for checkpoint files used to restart
@@ -293,7 +294,7 @@ module amr_parameters
   integer::IOGROUPSIZECONE=0       ! Lightcone
   integer::IOGROUPSIZEREP=0        ! Subfolder size
   logical::withoutmkdir=.false.    !If true mkdir should be done before the run
-  logical::print_when_io=.false.   !If true print when IO
+  logical::print_when_io=.true.    !If true print when IO
   logical::synchro_when_io=.false. !If true synchronize when IO
 
   ! CC parameters

@@ -1,0 +1,6 @@
+# first
+module unload openmpi
+
+# then
+module load intel-mpi/2019.8.254
+module load intel-compiler/2019.3.199

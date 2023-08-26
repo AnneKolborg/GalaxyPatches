@@ -153,7 +153,7 @@ recursive subroutine amr_step(ilevel,icount)
         if(clumpfind .and. ndim==3) call clump_finder(.true.,.false.)
 #endif
 
-        call dump_all
+        call dump("checkpoint")
 
         ! Dump lightcone
         if(lightcone .and. ndim==3) call output_cone()
@@ -171,7 +171,7 @@ recursive subroutine amr_step(ilevel,icount)
             call defrag
          endif
 
-         call dump_plotfile
+         call dump("plotfile")
 
       endif
 

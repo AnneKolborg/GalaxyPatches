@@ -2,12 +2,12 @@
 !#########################################################################
 !#########################################################################
 !#########################################################################
-subroutine dump_all
+subroutine dump(output_type)
    !-----------------------------------------------------------------------------------
-   ! SUBROUTINE: dump_all
+   ! SUBROUTINE: dump
    !
    ! DESCRIPTION:
-   !   This subroutine handles the creation and storage of various output files related
+   !   This subroutine handles the creation and storage of both checkpoint and plot files related
    !   to the state of the system being simulated. It creates directories and files based 
    !   on various conditions and writes data into them. Outputs include headers, amr, 
    !   hydro, rt, parts, poisson, radiation, gadget format, and timers.
@@ -22,7 +22,8 @@ subroutine dump_all
    !   - None directly by this subroutine; dependent subroutines called may modify globals.
    !
    ! INPUT/OUTPUT ARGUMENTS:
-   !   - No explicit arguments; uses module variables and parameters.
+   !   - output_type (character, input) : The type of output to be written. Can be either
+   !                                     'checkpoint' or 'plotfile'.
    !
    ! NOTES:
    !   1. If the subroutine is compiled with MPI support (WITHOUTMPI not defined), MPI
@@ -35,7 +36,7 @@ subroutine dump_all
    !      backups.
    !
    ! EXAMPLES OF USAGE:
-   !   call dump_all
+   !   call dump('checkpoint') or call dump('plotfile')
    !-----------------------------------------------------------------------------------
   use amr_commons
   use pm_commons
@@ -52,14 +53,28 @@ subroutine dump_all
   character(LEN=5)::nchar,ncharcpu
   character(LEN=80)::filename,filename_desc,filedir
   integer::ierr
+  character(len=*), intent(in) :: output_type
 
   if(nstep_coarse==nstep_coarse_old.and.nstep_coarse>0)return
   if(nstep_coarse==0.and.nrestart>0)return
   if(verbose)write(*,*)'Entering dump_all'
 
   call write_screen
-  call title(ifout,nchar)
-  ifout=ifout+1
+
+  if (TRIM(output_type) == "checkpoint") then
+   call title(ifout_checkpoint,nchar)
+   ! add 1 to ifout_checkpoint
+   ifout_checkpoint=ifout_checkpoint+1
+  elseif (TRIM(output_type) == "plotfile") then
+   call title(ifout_plotfile,nchar)
+   ! add 1 to ifout
+   ifout_plotfile=ifout_plotfile+1
+  else
+   ! Handle error for unexpected output_type
+   write(*,*) "Error: Unexpected output_type argument. Expected 'checkpoint' or 'plotfile'."
+   return  
+  endif
+
   if(t>=tout(iout).or.aexp>=aout(iout))iout=iout+1
   output_done=.true.
 
@@ -67,17 +82,27 @@ subroutine dump_all
 
   if(ndim>1)then
 
-     if(IOGROUPSIZEREP>0) then
-        filedir='checkpoint_'//TRIM(nchar)//'/checkpoint_'//TRIM(ncharcpu)//'/'
-     else
-        filedir='checkpoint_'//TRIM(nchar)//'/'
+   ! Create output directory that matches the output type
+    if (TRIM(output_type) == "checkpoint") then
+      if(IOGROUPSIZEREP>0) then
+         filedir='checkpoint_'//TRIM(nchar)//'/checkpoint_'//TRIM(ncharcpu)//'/'
+      else
+         filedir='checkpoint_'//TRIM(nchar)//'/'
+      endif
+    elseif (TRIM(output_type) == "plotfile") then
+      if(IOGROUPSIZEREP>0) then
+         filedir='plotfile_'//TRIM(nchar)//'/plotfile_'//TRIM(ncharcpu)//'/'
+      else
+         filedir='plotfile_'//TRIM(nchar)//'/'
+      endif
      endif
 
+     if(myid==1.and.print_when_io) write(*,*)'Starting to write files: ', filedir
      call create_output_dirs(filedir)
    
-     if(myid==1.and.print_when_io) write(*,*)'Start backup header'
      ! Output header: must be called by each process !
      filename=TRIM(filedir)//'header_'//TRIM(nchar)//'.txt'
+     if(myid==1.and.print_when_io) write(*,*)'Start backup header: ', filename
      call output_header(filename)
 #ifndef WITHOUTMPI
      if(synchro_when_io) call MPI_BARRIER(MPI_COMM_WORLD,info)
@@ -93,11 +118,11 @@ subroutine dump_all
         call output_makefile(filename)
         filename=TRIM(filedir)//'patches.txt'
         call output_patch(filename)
-        if(cooling .and. .not. neq_chem)then
+        if(cooling .and. .not. neq_chem .and. TRIM(output_type) == "checkpoint")then
            filename=TRIM(filedir)//'cooling_'//TRIM(nchar)//'.out'
            call output_cool(filename)
         end if
-        if(sink)then
+        if(sink .and. TRIM(output_type) == "checkpoint")then
            filename=TRIM(filedir)//'sink_'//TRIM(nchar)//'.info'
            call output_sink(filename)
            filename=TRIM(filedir)//'sink_'//TRIM(nchar)//'.csv'
@@ -140,7 +165,7 @@ subroutine dump_all
      if(hydro)then
         if(myid==1.and.print_when_io) write(*,*)'Start backup hydro'
         filename=TRIM(filedir)//'hydro_'//TRIM(nchar)//'.out'
-        filename_desc = trim(filedir)//'hydro_file_descriptor.txt'
+        filename_desc = TRIM(filedir)//'hydro_file_descriptor.txt'
         call backup_hydro(filename, filename_desc)
 #ifndef WITHOUTMPI
         if(synchro_when_io) call MPI_BARRIER(MPI_COMM_WORLD,info)
@@ -149,10 +174,10 @@ subroutine dump_all
      end if
 
 #ifdef RT
-     if(rt.or.neq_chem)then
+     if(rt .or. neq_chem .and. TRIM(output_type) == "checkpoint")then
         if(myid==1.and.print_when_io) write(*,*)'Start backup rt'
         filename=TRIM(filedir)//'rt_'//TRIM(nchar)//'.out'
-        filename_desc = trim(filedir) // 'rt_file_descriptor.txt'
+        filename_desc = TRIM(filedir) // 'rt_file_descriptor.txt'
         call rt_backup_hydro(filename, filename_desc)
 #ifndef WITHOUTMPI
         if(synchro_when_io) call MPI_BARRIER(MPI_COMM_WORLD,info)
@@ -161,22 +186,22 @@ subroutine dump_all
      endif
 #endif
 
-     if(pic)then
+     if(pic .and. TRIM(output_type) == "checkpoint")then
         if(myid==1.and.print_when_io) write(*,*)'Start backup part'
-        filename=trim(filedir)//'part_'//trim(nchar)//'.out'
+        filename=TRIM(filedir)//'part_'//TRIM(nchar)//'.out'
         filename_desc=TRIM(filedir)//'part_file_descriptor.txt'
         call backup_part(filename, filename_desc)
         if(sink)then
            filename=TRIM(filedir)//'sink_'//TRIM(nchar)//'.out'
            call backup_sink(filename)
-        end if
+        end if 
 #ifndef WITHOUTMPI
         if(synchro_when_io) call MPI_BARRIER(MPI_COMM_WORLD,info)
 #endif
         if(myid==1.and.print_when_io) write(*,*)'End backup part'
      end if
 
-     if(poisson)then
+     if(poisson .and. TRIM(output_type) == "checkpoint")then
         if(myid==1.and.print_when_io) write(*,*)'Start backup poisson'
         filename=TRIM(filedir)//'grav_'//TRIM(nchar)//'.out'
         call backup_poisson(filename)
@@ -186,7 +211,7 @@ subroutine dump_all
         if(myid==1.and.print_when_io) write(*,*)'End backup poisson'
      end if
 #ifdef ATON
-     if(aton)then
+     if(aton .and. TRIM(output_type) == "checkpoint")then
         if(myid==1.and.print_when_io) write(*,*)'Start backup rad'
         filename=TRIM(filedir)//'rad_'//TRIM(nchar)//'.out'
         call backup_radiation(filename)
@@ -198,7 +223,7 @@ subroutine dump_all
         if(myid==1.and.print_when_io) write(*,*)'End backup rad'
      end if
 #endif
-     if (gadget_output) then
+     if (gadget_output .and. TRIM(output_type) == "checkpoint") then
         if(myid==1.and.print_when_io) write(*,*)'Start backup gadget format'
         filename=TRIM(filedir)//'gsnapshot_'//TRIM(nchar)
         call savegadget(filename)
@@ -219,168 +244,7 @@ subroutine dump_all
 
   end if
 
-end subroutine dump_all
-!#########################################################################
-!#########################################################################
-!#########################################################################
-!#########################################################################
-subroutine dump_plotfile
-   !-----------------------------------------------------------------------------------
-   ! SUBROUTINE: dump_plotfile
-   !
-   ! DESCRIPTION:
-   !   This subroutine is responsible for dumping necessary data to plot files. The routine
-   !   addresses various conditions for dumping, including MPI parallelization, the current
-   !   step in coarse-grained simulations, output directory structures, and specific output
-   !   components like headers, info, patches, cooling data, and timers. Depending on the 
-   !   configurations and condition checks, the subroutine writes to the relevant files. 
-   !
-   ! MODULE DEPENDENCIES:
-   !   - amr_commons     : Common functionalities for Adaptive Mesh Refinement (AMR).
-   !   - pm_commons      : Common functionalities related to the particle-mesh algorithm.
-   !   - hydro_commons   : Common functionalities related to hydrodynamics.
-   !   - cooling_module  : Module containing routines for cooling.
-   !
-   ! GLOBALS MODIFIED:
-   !   - None directly by this subroutine; dependent subroutines called may modify globals.
-   !
-   ! INPUT/OUTPUT ARGUMENTS:
-   !   - No explicit arguments; uses module variables and parameters.
-   !
-   ! NOTES:
-   !   1. If the subroutine is compiled with MPI support (WITHOUTMPI not defined), MPI
-   !      functionalities are invoked to ensure synchronization across processes.
-   !   2. Depending on conditions, data is written to directories structured with 
-   !      'plotfile_' naming conventions and various descriptive subdirectories.
-   !   3. The subroutine checks the status of certain flags (e.g., hydro) to determine which
-   !      modules' data needs to be written to the output.
-   !   4. Verbose outputs can be triggered to notify the user about the progress of file 
-   !      backups.
-   !
-   ! EXAMPLES OF USAGE:
-   !   call dump_plotfile
-   !-----------------------------------------------------------------------------------
-   use amr_commons
-   use pm_commons
-   use hydro_commons
-   use cooling_module
-   implicit none
- #ifndef WITHOUTMPI
-   include 'mpif.h'
- #endif
- #if ! defined (WITHOUTMPI) || defined (NOSYSTEM)
-   integer::info
- #endif
-   character::nml_char
-   character(LEN=5)::nchar,ncharcpu
-   character(LEN=80)::filename,filename_desc,filedir
-   integer::ierr
- 
-   if(nstep_coarse==nstep_coarse_old.and.nstep_coarse>0)return
-   if(nstep_coarse==0.and.nrestart>0)return
-   if(verbose)write(*,*)'Entering dump_plot_file'
- 
-   call write_screen
-   call title(ifout,nchar)
-   ifout=ifout+1
-   if(t>=tout(iout).or.aexp>=aout(iout))iout=iout+1
-   output_done=.true.
- 
-   if(IOGROUPSIZEREP>0)call title(((myid-1)/IOGROUPSIZEREP)+1,ncharcpu)
- 
-   if(ndim>1)then
- 
-      if(IOGROUPSIZEREP>0) then
-         filedir='plotfile_'//TRIM(nchar)//'/group_'//TRIM(ncharcpu)//'/'
-      else
-         filedir='plotfile_'//TRIM(nchar)//'/'
-      endif
- 
-      call create_output_dirs(filedir)
-    
-      if(myid==1.and.print_when_io) write(*,*)'Start backup header'
-      ! Output header: must be called by each process !
-      filename=TRIM(filedir)//'header_'//TRIM(nchar)//'.txt'
-      call output_header(filename)
- #ifndef WITHOUTMPI
-      if(synchro_when_io) call MPI_BARRIER(MPI_COMM_WORLD,info)
- #endif
-      if(myid==1.and.print_when_io) write(*,*)'End backup header'
- 
-      if(myid==1.and.print_when_io) write(*,*)'Start backup info etc.'
-      ! Only master process
-      if(myid==1)then
-         filename=TRIM(filedir)//'info_'//TRIM(nchar)//'.txt'
-         call output_info(filename)
-         filename=TRIM(filedir)//'makefile.txt'
-         call output_makefile(filename)
-         filename=TRIM(filedir)//'patches.txt'
-         call output_patch(filename)
-         if(cooling .and. .not. neq_chem)then
-            filename=TRIM(filedir)//'cooling_'//TRIM(nchar)//'.out'
-            call output_cool(filename)
-         end if
-         ! Copy namelist file to output directory
-         filename=TRIM(filedir)//'namelist.txt'
-         OPEN(10, FILE=namelist_file, ACCESS="STREAM", ACTION="READ")
-         OPEN(11, FILE=filename,      ACCESS="STREAM", ACTION="WRITE")
-         DO
-            READ(10, IOSTAT=IERR)nml_char
-            IF (IERR.NE.0) EXIT
-            WRITE(11)nml_char
-         END DO
-         CLOSE(11)
-         CLOSE(10)
-         ! Copy compilation details to output directory
-         filename=TRIM(filedir)//'compilation.txt'
-         OPEN(UNIT=11, FILE=filename, FORM='formatted')
-         write(11,'(" compile date = ",A)')TRIM(builddate)
-         write(11,'(" patch dir    = ",A)')TRIM(patchdir)
-         write(11,'(" remote repo  = ",A)')TRIM(gitrepo)
-         write(11,'(" local branch = ",A)')TRIM(gitbranch)
-         write(11,'(" last commit  = ",A)')TRIM(githash)
-         CLOSE(11)
-      endif
- #ifndef WITHOUTMPI
-      if(synchro_when_io) call MPI_BARRIER(MPI_COMM_WORLD,info)
- #endif
-      if(myid==1.and.print_when_io) write(*,*)'End backup info etc.'
- 
-      if(myid==1.and.print_when_io) write(*,*)'Start backup amr'
-      filename=TRIM(filedir)//'amr_'//TRIM(nchar)//'.out'
-      call backup_amr(filename)
- #ifndef WITHOUTMPI
-      if(synchro_when_io) call MPI_BARRIER(MPI_COMM_WORLD,info)
- #endif
-      if(myid==1.and.print_when_io) write(*,*)'End backup amr'
- 
-      if(hydro)then
-         if(myid==1.and.print_when_io) write(*,*)'Start backup hydro'
-         filename=TRIM(filedir)//'hydro_'//TRIM(nchar)//'.out'
-         filename_desc = trim(filedir)//'hydro_file_descriptor.txt'
-         call backup_hydro(filename, filename_desc)
- #ifndef WITHOUTMPI
-         if(synchro_when_io) call MPI_BARRIER(MPI_COMM_WORLD,info)
- #endif
-         if(myid==1.and.print_when_io) write(*,*)'End backup hydro'
-      end if
- 
-      if(myid==1.and.print_when_io) write(*,*)'Start timer'
-      ! Output timer: must be called by each process !
-      filename=TRIM(filedir)//'timer_'//TRIM(nchar)//'.txt'
-      call output_timer(.true., filename)
- #ifndef WITHOUTMPI
-      if(synchro_when_io) call MPI_BARRIER(MPI_COMM_WORLD,info)
- #endif
-      if(myid==1.and.print_when_io) write(*,*)'End output timer'
- 
-   end if
- 
- end subroutine dump_plotfile
-!#########################################################################
-!#########################################################################
-!#########################################################################
-!#########################################################################
+end subroutine dump
  
 subroutine backup_amr(filename)
    !-----------------------------------------------------------------------------------
@@ -485,7 +349,7 @@ subroutine backup_amr(filename)
   write(ilun)ngrid_current
   write(ilun)boxlen
   ! Write time variables
-  write(ilun)noutput,iout,ifout
+  write(ilun)noutput,iout,ifout_checkpoint,ifout_plotfile
   write(ilun)tout(1:noutput)
   write(ilun)aout(1:noutput)
   write(ilun)t
@@ -643,7 +507,7 @@ subroutine output_info(filename)
    !   - icpu, idom: Iterative counters.
    !   - ierr: Error status from file operations.
    !   - scale, scale_nH, scale_T2, scale_l, scale_d, scale_t, scale_v: Scaling factors.
-   !   - fileloc: File location obtained by trimming filename.
+   !   - fileloc: File location obtained by TRIMming filename.
    !
    ! Notes:
    !   - The subroutine starts by calculating conversion factors from user units to cgs units.
@@ -655,9 +519,6 @@ subroutine output_info(filename)
    !   call output_info('simulation_info.dat')
    !
    !==============================================================================
-   subroutine output_info(filename)
-      ...
-      end subroutine output_info
   use amr_commons
   use hydro_commons
   use pm_commons
@@ -765,7 +626,7 @@ subroutine output_header(filename)
    !
    ! Local Variables:
    !   - ilun: Unit number associated with the file operation.
-   !   - fileloc: File location obtained by trimming filename.
+   !   - fileloc: File location obtained by TRIMming filename.
    !   - npart_family_loc: Local count of particles in each family.
    !   - npart_family: Global count of particles in each family (across all processes).
    !   - npart_all_loc: Local count of all particles.
@@ -841,7 +702,7 @@ subroutine output_header(filename)
      write(ilun, '(a1,a12,a10)') '#', 'Family', 'Count'
      do ifam = -NFAMILIES, NFAMILIES
         write(ilun, '(a13, i10)') &
-             trim(particle_family_keys(ifam)), npart_family(ifam)
+             TRIM(particle_family_keys(ifam)), npart_family(ifam)
      end do
      write(ilun, '(a13, i10)') &
           'undefined', npart_all - sum(npart_family)
@@ -1064,7 +925,7 @@ subroutine create_output_dirs(filedir)
 #else
     call EXECUTE_COMMAND_LINE(filecmd,exitstat=ierr,wait=.true.)
     if(ierr.ne.0 .and. ierr.ne.127)then
-      write(*,*) 'Error - Could not create ',trim(filedir),' error code=',ierr
+      write(*,*) 'Error - Could not create ',TRIM(filedir),' error code=',ierr
 #ifndef WITHOUTMPI
       call MPI_ABORT(MPI_COMM_WORLD,1,info)
 #else
